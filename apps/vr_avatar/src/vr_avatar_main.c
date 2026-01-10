@@ -1,6 +1,6 @@
 /**
  * @file vr_avatar_main.c
- * @brief VR Avatar Project - Camera Viewfinder + Emotion Demo
+ * @brief VR Avatar Project - Camera Viewfinder (Double Buffered)
  */
 
 #include "tal_api.h"
@@ -13,6 +13,7 @@
 #include "tdl_display_draw.h"
 #include "board_com_api.h"
 #include "tkl_dma2d.h"
+#include <string.h>
 
 // --- APP INCLUDES ---
 #include "emotion_manager.h"
@@ -27,11 +28,17 @@
 #endif
 
 // --- GLOBALS ---
-TDL_DISP_HANDLE_T      sg_tdl_disp_hdl = NULL;
-TDL_DISP_DEV_INFO_T    sg_display_info;
+TDL_DISP_HANDLE_T   sg_tdl_disp_hdl = NULL;
+TDL_DISP_DEV_INFO_T sg_display_info;
+
+// Double Buffering (Ping-Pong)
+TDL_DISP_FRAME_BUFF_T *sg_p_display_fb_1 = NULL;
+TDL_DISP_FRAME_BUFF_T *sg_p_display_fb_2 = NULL;
+
+// FIX: Renamed back to 'sg_p_display_fb' so emotion_manager.c can find it!
 TDL_DISP_FRAME_BUFF_T *sg_p_display_fb = NULL;
 
-// DMA2D Globals (For Hardware Acceleration)
+// DMA2D Globals
 static TKL_DMA2D_FRAME_INFO_T sg_dma_in  = {0};
 static TKL_DMA2D_FRAME_INFO_T sg_dma_out = {0};
 static SEM_HANDLE             sg_dma_sem = NULL;
@@ -41,7 +48,7 @@ static volatile bool sg_show_camera   = false;
 static uint16_t      sg_screen_width  = 0;
 static uint16_t      sg_screen_height = 0;
 
-// --- DMA2D (GRAPHICS ACCELERATOR) SETUP ---
+// --- DMA2D SETUP ---
 static void __dma2d_irq_cb(TUYA_DMA2D_IRQ_E type, VOID_T *args)
 {
     if (sg_dma_sem)
@@ -54,46 +61,46 @@ static int init_dma2d(void)
     if (ret != OPRT_OK)
         return ret;
 
-    TUYA_DMA2D_BASE_CFG_T dma_cfg = {
-        .cb  = __dma2d_irq_cb,
-        .arg = NULL,
-    };
+    TUYA_DMA2D_BASE_CFG_T dma_cfg = {.cb = __dma2d_irq_cb, .arg = NULL};
     return tkl_dma2d_init(&dma_cfg);
 }
 
-// --- CAMERA CALLBACK: THIS DRAWS VIDEO TO SCREEN ---
+// --- CAMERA CALLBACK ---
 OPERATE_RET camera_to_screen_cb(TDL_CAMERA_HANDLE_T hdl, TDL_CAMERA_FRAME_T *frame)
 {
-    // 1. If we shouldn't show camera, exit immediately
     if (!sg_show_camera)
         return OPRT_OK;
-
     if (sg_p_display_fb == NULL)
         return OPRT_COM_ERROR;
 
-    // 2. Setup Input (Camera YUV)
+    // 1. Setup Input (Camera YUV422)
     sg_dma_in.type   = TUYA_FRAME_FMT_YUV422;
     sg_dma_in.width  = frame->width;
     sg_dma_in.height = frame->height;
     sg_dma_in.pbuf   = frame->data;
 
-    // 3. Setup Output (Screen RGB)
+    // 2. Setup Output (Active Framebuffer RGB565)
+    // We draw to whichever buffer sg_p_display_fb is currently pointing to
     sg_dma_out.type   = TUYA_FRAME_FMT_RGB565;
     sg_dma_out.width  = sg_p_display_fb->width;
     sg_dma_out.height = sg_p_display_fb->height;
     sg_dma_out.pbuf   = sg_p_display_fb->frame;
 
-    // 4. Run Hardware Conversion
+    // 3. Run Hardware Conversion
     tkl_dma2d_convert(&sg_dma_in, &sg_dma_out);
-    tal_semaphore_wait(sg_dma_sem, 50); // Wait max 50ms
+    tal_semaphore_wait(sg_dma_sem, 100);
 
-    // 5. Swap Bytes if needed
+    // 4. Swap Bytes (Endianness Fix)
     if (sg_display_info.is_swap) {
         tdl_disp_dev_rgb565_swap((uint16_t *)sg_p_display_fb->frame, sg_p_display_fb->len / 2);
     }
 
-    // 6. Blast to Screen!
+    // 5. Blast to Screen
     tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
+
+    // 6. Swap Buffers (Ping-Pong)
+    // Toggle the pointer between fb_1 and fb_2
+    sg_p_display_fb = (sg_p_display_fb == sg_p_display_fb_1) ? sg_p_display_fb_2 : sg_p_display_fb_1;
 
     return OPRT_OK;
 }
@@ -101,9 +108,8 @@ OPERATE_RET camera_to_screen_cb(TDL_CAMERA_HANDLE_T hdl, TDL_CAMERA_FRAME_T *fra
 // --- DISPLAY INIT ---
 static int init_display(void)
 {
-    // FIX: Using 'rt' to check for errors now
     OPERATE_RET rt = OPRT_OK;
-    PR_NOTICE("--- Initializing Display ---");
+    PR_NOTICE("--- Initializing Display (Double Buffered) ---");
 
     board_register_hardware();
 
@@ -113,25 +119,34 @@ static int init_display(void)
 
     rt = tdl_disp_dev_get_info(sg_tdl_disp_hdl, &sg_display_info);
     if (rt != OPRT_OK)
-        return -1; // Added check
+        return -1;
 
     rt = tdl_disp_dev_open(sg_tdl_disp_hdl);
     if (rt != OPRT_OK)
-        return -1; // Added check
+        return -1;
 
     sg_screen_width  = sg_display_info.width;
     sg_screen_height = sg_display_info.height;
     tdl_disp_set_brightness(sg_tdl_disp_hdl, 100);
 
-    // Create Frame Buffer
-    uint32_t frame_len = sg_display_info.width * sg_display_info.height * 2;
-    sg_p_display_fb    = tdl_disp_create_frame_buff(DISP_FB_TP_PSRAM, frame_len);
+    // Create TWO Frame Buffers
+    uint32_t frame_len = CAM_WIDTH * CAM_HEIGHT * 2;
 
-    if (sg_p_display_fb) {
-        sg_p_display_fb->fmt    = sg_display_info.fmt;
-        sg_p_display_fb->width  = sg_display_info.width;
-        sg_p_display_fb->height = sg_display_info.height;
+    sg_p_display_fb_1 = tdl_disp_create_frame_buff(DISP_FB_TP_PSRAM, frame_len);
+    if (sg_p_display_fb_1) {
+        sg_p_display_fb_1->fmt    = sg_display_info.fmt;
+        sg_p_display_fb_1->width  = CAM_WIDTH;
+        sg_p_display_fb_1->height = CAM_HEIGHT;
     }
+
+    sg_p_display_fb_2 = tdl_disp_create_frame_buff(DISP_FB_TP_PSRAM, frame_len);
+    if (sg_p_display_fb_2) {
+        sg_p_display_fb_2->fmt    = sg_display_info.fmt;
+        sg_p_display_fb_2->width  = CAM_WIDTH;
+        sg_p_display_fb_2->height = CAM_HEIGHT;
+    }
+
+    sg_p_display_fb = sg_p_display_fb_1; // Initialize the global pointer
 
     return 0;
 }
@@ -142,7 +157,6 @@ void user_main(void)
     tal_log_init(TAL_LOG_LEVEL_DEBUG, 4096, (TAL_LOG_OUTPUT_CB)tkl_log_output);
     PR_NOTICE("%s", "=== VR Avatar App Starting ===");
 
-    // 1. Init Subsystems
     if (init_display() != 0) {
         PR_ERR("Display Init Failed");
         return;
@@ -150,12 +164,11 @@ void user_main(void)
     init_dma2d();
     emotion_manager_init();
 
-    // 2. Init Camera with OUR Drawing Callback
     if (camera_init(camera_to_screen_cb) != 0) {
         PR_ERR("Camera Init Failed");
     }
 
-    // 3. Connect WiFi
+    // Connect WiFi
     tal_kv_init(&(tal_kv_cfg_t){.seed = "vmlkasdh93dlvlcy", .key = "dflfuap134ddlduq"});
     tal_sw_timer_init();
     tal_workq_init();
@@ -165,7 +178,7 @@ void user_main(void)
     strcpy(wifi_info.pswd, WIFI_PASSWORD);
     netmgr_conn_set(NETCONN_WIFI, NETCONN_CMD_SSID_PSWD, &wifi_info);
 
-    // 4. SHOW CAMERA (The Viewfinder Phase)
+    // SHOW CAMERA
     PR_NOTICE(">>> CAMERA STARTING: Look at the screen! <<<");
     sg_show_camera = true;
 
@@ -177,7 +190,12 @@ void user_main(void)
     PR_NOTICE(">>> Camera Done. Switching to Avatar. <<<");
     sg_show_camera = false;
 
-    // 5. EMOTION LOOP
+    // CLEAR SCREEN MANUALLY
+    if (sg_p_display_fb != NULL) {
+        memset(sg_p_display_fb->frame, 0x00, sg_p_display_fb->len);
+        tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
+    }
+
     while (1) {
         emotion_type_t new_emotion = emotion_next();
         PR_NOTICE("Emotion: %s", emotion_get_name(new_emotion));
