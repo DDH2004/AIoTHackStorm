@@ -1,6 +1,6 @@
 /**
  * @file vr_avatar_main.c
- * @brief VR Avatar Project - Step 1: Simple Face Display
+ * @brief VR Avatar Project - Emotion Display Demo
  */
 
 #include "tal_api.h"
@@ -13,6 +13,9 @@
 #include "tdl_display_draw.h"
 #include "board_com_api.h"
 
+// --- EMOTION MANAGER ---
+#include "emotion_manager.h"
+
 // --- CONFIGURATION ---
 #define WIFI_SSID     "JJ Lake"
 #define WIFI_PASSWORD "20220315"
@@ -21,95 +24,12 @@
 #define DISPLAY_NAME "lcd_disp"
 #endif
 
-// --- COLOR DEFINITIONS (RGB565) ---
-#define COLOR_BLACK     0x0000
-#define COLOR_WHITE     0xFFFF
-#define COLOR_YELLOW    0xFFE0
-#define COLOR_CYAN      0x07FF
-
-// --- GLOBALS ---
-static TDL_DISP_HANDLE_T      sg_tdl_disp_hdl = NULL;
-static TDL_DISP_DEV_INFO_T    sg_display_info;
-static TDL_DISP_FRAME_BUFF_T *sg_p_display_fb = NULL;
-static uint16_t               sg_screen_width = 0;
-static uint16_t               sg_screen_height = 0;
-
-// --- HELPER: Draw a filled circle using SDK draw_point ---
-static void draw_filled_circle(int16_t cx, int16_t cy, int16_t r, uint32_t color)
-{
-    for (int16_t y = -r; y <= r; y++) {
-        for (int16_t x = -r; x <= r; x++) {
-            if (x * x + y * y <= r * r) {
-                int16_t px = cx + x;
-                int16_t py = cy + y;
-                if (px >= 0 && px < sg_screen_width && py >= 0 && py < sg_screen_height) {
-                    tdl_disp_draw_point(sg_p_display_fb, px, py, color, sg_display_info.is_swap);
-                }
-            }
-        }
-    }
-}
-
-// --- HELPER: Draw a filled rectangle using SDK ---
-static void draw_filled_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color)
-{
-    TDL_DISP_RECT_T rect;
-    
-    // Clamp starting coordinates
-    int16_t x0 = (x < 0) ? 0 : x;
-    int16_t y0 = (y < 0) ? 0 : y;
-    int16_t x1 = x + w;
-    int16_t y1 = y + h;
-    
-    // Clamp ending coordinates to screen bounds
-    if (x1 > sg_screen_width) x1 = sg_screen_width;
-    if (y1 > sg_screen_height) y1 = sg_screen_height;
-    
-    // Set rect using x0, y0, x1, y1 format
-    rect.x0 = x0;
-    rect.y0 = y0;
-    rect.x1 = x1;
-    rect.y1 = y1;
-    
-    tdl_disp_draw_fill(sg_p_display_fb, &rect, color, sg_display_info.is_swap);
-}
-
-// --- DRAW AVATAR FACE ---
-static void draw_avatar_face(int is_happy)
-{
-    int16_t cx = sg_screen_width / 2;
-    int16_t cy = sg_screen_height / 2;
-    int16_t face_radius = (sg_screen_width < sg_screen_height ? sg_screen_width : sg_screen_height) / 3;
-
-    // 1. Clear background
-    tdl_disp_draw_fill_full(sg_p_display_fb, COLOR_CYAN, sg_display_info.is_swap);
-
-    // 2. Draw face (yellow circle)
-    draw_filled_circle(cx, cy, face_radius, COLOR_YELLOW);
-
-    // 3. Draw eyes
-    int16_t eye_offset_x = face_radius / 3;
-    int16_t eye_offset_y = face_radius / 4;
-    int16_t eye_radius = face_radius / 8;
-    
-    draw_filled_circle(cx - eye_offset_x, cy - eye_offset_y, eye_radius, COLOR_BLACK);
-    draw_filled_circle(cx + eye_offset_x, cy - eye_offset_y, eye_radius, COLOR_BLACK);
-
-    // 4. Draw mouth
-    int16_t mouth_y = cy + face_radius / 3;
-    int16_t mouth_width = face_radius / 2;
-    
-    if (is_happy) {
-        // Happy mouth (wider rectangle)
-        draw_filled_rect(cx - mouth_width / 2, mouth_y, mouth_width, face_radius / 8, COLOR_BLACK);
-    } else {
-        // Neutral mouth (thin line)
-        draw_filled_rect(cx - mouth_width / 2, mouth_y, mouth_width, 4, COLOR_BLACK);
-    }
-
-    // 5. Flush to display
-    tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
-}
+// --- GLOBALS (shared with emotion_manager.c) ---
+TDL_DISP_HANDLE_T      sg_tdl_disp_hdl = NULL;
+TDL_DISP_DEV_INFO_T    sg_display_info;
+TDL_DISP_FRAME_BUFF_T *sg_p_display_fb = NULL;
+static uint16_t        sg_screen_width = 0;
+static uint16_t        sg_screen_height = 0;
 
 // --- DISPLAY INITIALIZATION ---
 static int init_display(void)
@@ -180,14 +100,20 @@ void user_main(void)
     tal_log_init(TAL_LOG_LEVEL_DEBUG, 4096, (TAL_LOG_OUTPUT_CB)tkl_log_output);
     PR_NOTICE("=== VR Avatar App Starting ===");
 
+    // Initialize display
     if (init_display() != 0) {
         PR_ERR("Display init failed!");
         return;
     }
 
-    PR_NOTICE("Drawing avatar face...");
-    draw_avatar_face(1);
+    // Initialize emotion manager
+    emotion_manager_init();
 
+    // Draw initial emotion
+    PR_NOTICE("Drawing initial emotion: %s", emotion_get_name(emotion_get_current()));
+    emotion_draw_current(sg_screen_width, sg_screen_height);
+
+    // Initialize system & network
     tal_kv_init(&(tal_kv_cfg_t){.seed = "vmlkasdh93dlvlcy", .key = "dflfuap134ddlduq"});
     tal_sw_timer_init();
     tal_workq_init();
@@ -201,12 +127,13 @@ void user_main(void)
     PR_NOTICE("Connecting to: %s", WIFI_SSID);
     netmgr_conn_set(NETCONN_WIFI, NETCONN_CMD_SSID_PSWD, &wifi_info);
 
-    int happy = 1;
+    // Demo loop - cycle through all emotions
     while (1) {
-        tal_system_sleep(2000);
-        happy = !happy;
-        draw_avatar_face(happy);
-        PR_DEBUG("Expression: %s", happy ? "HAPPY" : "NEUTRAL");
+        tal_system_sleep(3000);  // Wait 3 seconds
+        
+        emotion_type_t new_emotion = emotion_next();
+        PR_NOTICE("Emotion changed to: %s", emotion_get_name(new_emotion));
+        emotion_draw_current(sg_screen_width, sg_screen_height);
     }
 }
 

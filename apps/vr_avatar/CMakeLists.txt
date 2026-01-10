@@ -1,29 +1,37 @@
+##
 # @file CMakeLists.txt
-# @brief VR Avatar App CMake
+# @brief VR Avatar Application
+##
 
+# Get the app name from folder
 set(APP_PATH ${CMAKE_CURRENT_LIST_DIR})
+get_filename_component(APP_NAME ${APP_PATH} NAME)
+
+# Collect source files from src/ and src/emotions/
 aux_source_directory(${APP_PATH}/src APP_SRCS)
+aux_source_directory(${APP_PATH}/src/emotions EMOTION_SRCS)
 
-add_library(tuyaapp STATIC ${APP_SRCS})
+# Combine all sources
+list(APPEND APP_SRCS ${EMOTION_SRCS})
 
-# 1. Include Paths
-target_include_directories(tuyaapp
-    PRIVATE
+# Include directories
+set(APP_INC 
+    ${APP_PATH}/include
     ${APP_PATH}/src
-    # Include TDL (Driver Layer) headers
-    ${CMAKE_SOURCE_DIR}/src/peripherals/display/tdl_display/include
-    # Include Board headers (for board_com_api.h)
-    ${CMAKE_SOURCE_DIR}/include/components/board
+    ${APP_PATH}/src/emotions
 )
 
-# 2. Link Libraries
-target_link_libraries(tuyaapp
-    tal_system
-    tal_media
-    tal_wifi
-    tal_bluetooth
-    # Link the Display Driver Layer
-    tdl_display 
-    # Link the Board Init library (crucial for board_register_hardware)
-    board_init  
+########################################
+# Build library
+########################################
+add_library(${EXAMPLE_LIB})
+
+target_sources(${EXAMPLE_LIB}
+    PRIVATE
+        ${APP_SRCS}
+)
+
+target_include_directories(${EXAMPLE_LIB}
+    PRIVATE
+        ${APP_INC}
 )
