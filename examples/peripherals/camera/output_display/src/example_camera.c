@@ -40,32 +40,32 @@ typedef enum {
  * @brief Binary conversion configuration
  */
 typedef struct {
-    BINARY_METHOD_E method;  // Conversion method
-    uint8_t fixed_threshold; // Fixed threshold value (0-255), used when method is BINARY_METHOD_FIXED
+    BINARY_METHOD_E method;          // Conversion method
+    uint8_t         fixed_threshold; // Fixed threshold value (0-255), used when method is BINARY_METHOD_FIXED
 } BINARY_CONFIG_T;
 
 /***********************************************************
 ***********************variable define**********************
 ***********************************************************/
-static TDL_DISP_HANDLE_T sg_tdl_disp_hdl = NULL;
-static TDL_DISP_DEV_INFO_T sg_display_info;
-static TDL_DISP_FRAME_BUFF_T *sg_p_display_fb = NULL;
-static TDL_DISP_FRAME_BUFF_T *sg_p_display_fb_1 = NULL;
-static TDL_DISP_FRAME_BUFF_T *sg_p_display_fb_2 = NULL;
+static TDL_DISP_HANDLE_T      sg_tdl_disp_hdl = NULL;
+static TDL_DISP_DEV_INFO_T    sg_display_info;
+static TDL_DISP_FRAME_BUFF_T *sg_p_display_fb       = NULL;
+static TDL_DISP_FRAME_BUFF_T *sg_p_display_fb_1     = NULL;
+static TDL_DISP_FRAME_BUFF_T *sg_p_display_fb_2     = NULL;
 static TDL_DISP_FRAME_BUFF_T *sg_p_display_fb_rotat = NULL;
 
 static TDL_CAMERA_HANDLE_T sg_tdl_camera_hdl = NULL;
 
 // Binary conversion configuration
 static BINARY_CONFIG_T sg_binary_config = {
-    .method = BINARY_METHOD_ADAPTIVE,
+    .method          = BINARY_METHOD_ADAPTIVE,
     .fixed_threshold = DEFAULT_FIXED_THRESHOLD,
 };
 
 #if defined(ENABLE_DMA2D) && (ENABLE_DMA2D == 1)
-static TKL_DMA2D_FRAME_INFO_T sg_in_frame = {0};
+static TKL_DMA2D_FRAME_INFO_T sg_in_frame  = {0};
 static TKL_DMA2D_FRAME_INFO_T sg_out_frame = {0};
-static SEM_HANDLE sg_convert_sem;
+static SEM_HANDLE             sg_convert_sem;
 #endif
 /***********************************************************
 ***********************function define**********************
@@ -85,7 +85,7 @@ static OPERATE_RET __dma2d_init(void)
     TUYA_CALL_ERR_RETURN(tal_semaphore_create_init(&sg_convert_sem, 0, 1));
 
     TUYA_DMA2D_BASE_CFG_T dma2d_cfg = {
-        .cb = __dma2d_irq_cb,
+        .cb  = __dma2d_irq_cb,
         .arg = NULL,
     };
 
@@ -104,23 +104,23 @@ OPERATE_RET __get_camera_raw_frame_rgb565_cb(TDL_CAMERA_HANDLE_T hdl, TDL_CAMERA
 #if defined(ENABLE_DMA2D) && (ENABLE_DMA2D == 1)
     TDL_DISP_FRAME_BUFF_T *target_fb = NULL;
 
-    sg_in_frame.type = TUYA_FRAME_FMT_YUV422;
-    sg_in_frame.width = frame->width;
-    sg_in_frame.height = frame->height;
+    sg_in_frame.type        = TUYA_FRAME_FMT_YUV422;
+    sg_in_frame.width       = frame->width;
+    sg_in_frame.height      = frame->height;
     sg_in_frame.axis.x_axis = 0;
     sg_in_frame.axis.y_axis = 0;
-    sg_in_frame.width_cp = 0;
-    sg_in_frame.height_cp = 0;
-    sg_in_frame.pbuf = frame->data;
+    sg_in_frame.width_cp    = 0;
+    sg_in_frame.height_cp   = 0;
+    sg_in_frame.pbuf        = frame->data;
 
-    sg_out_frame.type = TUYA_FRAME_FMT_RGB565;
-    sg_out_frame.width = sg_p_display_fb->width;
-    sg_out_frame.height = sg_p_display_fb->height;
+    sg_out_frame.type        = TUYA_FRAME_FMT_RGB565;
+    sg_out_frame.width       = sg_p_display_fb->width;
+    sg_out_frame.height      = sg_p_display_fb->height;
     sg_out_frame.axis.x_axis = 0;
     sg_out_frame.axis.y_axis = 0;
-    sg_out_frame.width_cp = 0;
-    sg_out_frame.height_cp = 0;
-    sg_out_frame.pbuf = sg_p_display_fb->frame;
+    sg_out_frame.width_cp    = 0;
+    sg_out_frame.height_cp   = 0;
+    sg_out_frame.pbuf        = sg_p_display_fb->frame;
 
     TUYA_CALL_ERR_RETURN(tkl_dma2d_convert(&sg_in_frame, &sg_out_frame));
 
@@ -177,7 +177,7 @@ int yuv422_to_binary(uint8_t *yuv422_data, int width, int height, uint8_t *binar
         int row_offset = y * width * 2; // Each row has width*2 bytes
         for (int x = 0; x < width; x++) {
             // Try UYVY format first (Y at odd positions: 1, 3, 5, 7...)
-            int yuv_index = row_offset + x * 2 + 1;
+            int     yuv_index = row_offset + x * 2 + 1;
             uint8_t luminance = yuv422_data[yuv_index]; // Y component
 
             // Apply threshold
@@ -208,7 +208,7 @@ int yuv422_to_binary(uint8_t *yuv422_data, int width, int height, uint8_t *binar
 static uint8_t __calculate_adaptive_threshold(uint8_t *yuv422_data, int width, int height)
 {
     uint32_t luminance_sum = 0;
-    int total_pixels = width * height;
+    int      total_pixels  = width * height;
 
     for (int y = 0; y < height; y++) {
         int row_offset = y * width * 2;
@@ -235,13 +235,13 @@ static uint8_t __calculate_adaptive_threshold(uint8_t *yuv422_data, int width, i
 static uint8_t __calculate_otsu_threshold(uint8_t *yuv422_data, int width, int height)
 {
     int histogram[256] = {0};
-    int total_pixels = width * height;
+    int total_pixels   = width * height;
 
     // Step 1: Build histogram
     for (int y = 0; y < height; y++) {
         int row_offset = y * width * 2;
         for (int x = 0; x < width; x++) {
-            int yuv_index = row_offset + x * 2 + 1; // UYVY format: Y at odd positions
+            int     yuv_index = row_offset + x * 2 + 1; // UYVY format: Y at odd positions
             uint8_t luminance = yuv422_data[yuv_index];
             histogram[luminance]++;
         }
@@ -254,9 +254,9 @@ static uint8_t __calculate_otsu_threshold(uint8_t *yuv422_data, int width, int h
     }
 
     // Step 3: Find threshold with maximum between-class variance
-    float sum_background = 0;
-    int weight_background = 0;
-    float max_variance = 0;
+    float   sum_background    = 0;
+    int     weight_background = 0;
+    float   max_variance      = 0;
     uint8_t optimal_threshold = 0;
 
     for (int t = 0; t < 256; t++) {
@@ -278,7 +278,7 @@ static uint8_t __calculate_otsu_threshold(uint8_t *yuv422_data, int width, int h
                          (mean_background - mean_foreground);
 
         if (variance > max_variance) {
-            max_variance = variance;
+            max_variance      = variance;
             optimal_threshold = t;
         }
     }
@@ -430,8 +430,8 @@ OPERATE_RET get_binary_config(BINARY_CONFIG_T *config)
 
 static OPERATE_RET __display_init(void)
 {
-    OPERATE_RET rt = OPRT_OK;
-    uint32_t frame_len = 0;
+    OPERATE_RET rt        = OPRT_OK;
+    uint32_t    frame_len = 0;
 
     memset(&sg_display_info, 0, sizeof(TDL_DISP_DEV_INFO_T));
 
@@ -463,8 +463,8 @@ static OPERATE_RET __display_init(void)
         PR_ERR("create display frame buff failed");
         return OPRT_MALLOC_FAILED;
     }
-    sg_p_display_fb_1->fmt = sg_display_info.fmt;
-    sg_p_display_fb_1->width = EXAMPLE_CAMERA_WIDTH;
+    sg_p_display_fb_1->fmt    = sg_display_info.fmt;
+    sg_p_display_fb_1->width  = EXAMPLE_CAMERA_WIDTH;
     sg_p_display_fb_1->height = EXAMPLE_CAMERA_HEIGHT;
 
     sg_p_display_fb_2 = tdl_disp_create_frame_buff(DISP_FB_TP_PSRAM, frame_len);
@@ -472,8 +472,8 @@ static OPERATE_RET __display_init(void)
         PR_ERR("create display frame buff failed");
         return OPRT_MALLOC_FAILED;
     }
-    sg_p_display_fb_2->fmt = sg_display_info.fmt;
-    sg_p_display_fb_2->width = EXAMPLE_CAMERA_WIDTH;
+    sg_p_display_fb_2->fmt    = sg_display_info.fmt;
+    sg_p_display_fb_2->width  = EXAMPLE_CAMERA_WIDTH;
     sg_p_display_fb_2->height = EXAMPLE_CAMERA_HEIGHT;
 
     if (sg_display_info.rotation != TUYA_DISPLAY_ROTATION_0) {
@@ -482,8 +482,8 @@ static OPERATE_RET __display_init(void)
             PR_ERR("create display frame buff failed");
             return OPRT_MALLOC_FAILED;
         }
-        sg_p_display_fb_rotat->fmt = sg_display_info.fmt;
-        sg_p_display_fb_rotat->width = EXAMPLE_CAMERA_WIDTH;
+        sg_p_display_fb_rotat->fmt    = sg_display_info.fmt;
+        sg_p_display_fb_rotat->width  = EXAMPLE_CAMERA_WIDTH;
         sg_p_display_fb_rotat->height = EXAMPLE_CAMERA_HEIGHT;
     }
 
@@ -494,7 +494,7 @@ static OPERATE_RET __display_init(void)
 
 static OPERATE_RET __camera_init(void)
 {
-    OPERATE_RET rt = OPRT_OK;
+    OPERATE_RET      rt = OPRT_OK;
     TDL_CAMERA_CFG_T cfg;
 
     memset(&cfg, 0, sizeof(TDL_CAMERA_CFG_T));
@@ -505,9 +505,9 @@ static OPERATE_RET __camera_init(void)
         return OPRT_NOT_FOUND;
     }
 
-    cfg.fps = EXAMPLE_CAMERA_FPS;
-    cfg.width = EXAMPLE_CAMERA_WIDTH;
-    cfg.height = EXAMPLE_CAMERA_HEIGHT;
+    cfg.fps     = EXAMPLE_CAMERA_FPS;
+    cfg.width   = EXAMPLE_CAMERA_WIDTH;
+    cfg.height  = EXAMPLE_CAMERA_HEIGHT;
     cfg.out_fmt = TDL_CAMERA_FMT_YUV422;
 
     if (sg_display_info.fmt == TUYA_PIXEL_FMT_MONOCHROME) {
