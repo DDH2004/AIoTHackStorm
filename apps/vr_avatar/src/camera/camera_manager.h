@@ -9,7 +9,7 @@
 #include "tal_api.h"
 #include "tdl_camera_manage.h"
 
-#define CAM_WIDTH  640
+#define CAM_WIDTH  320
 #define CAM_HEIGHT 480
 #define CAM_FPS    30
 

@@ -12,11 +12,6 @@
 #define CAMERA_NAME "camera"
 #endif
 
-// Resolution config
-#define CAM_WIDTH  640
-#define CAM_HEIGHT 480
-#define CAM_FPS    30
-
 static TDL_CAMERA_HANDLE_T sg_camera_handle = NULL;
 
 // Default logger if no callback is provided
