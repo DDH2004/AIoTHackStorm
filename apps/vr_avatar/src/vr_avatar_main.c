@@ -1,6 +1,6 @@
 /**
  * @file vr_avatar_main.c
- * @brief VR Avatar Project - Emotion Display Demo
+ * @brief VR Avatar Project - Emotion Display with Voice Detection
  */
 
 #include "tal_api.h"
@@ -16,6 +16,9 @@
 // --- EMOTION MANAGER ---
 #include "emotion_manager.h"
 
+// --- AUDIO CAPTURE ---
+#include "audio_capture.h"
+
 // --- CONFIGURATION ---
 #define WIFI_SSID     "JJ Lake"
 #define WIFI_PASSWORD "20220315"
@@ -30,6 +33,10 @@ TDL_DISP_DEV_INFO_T    sg_display_info;
 TDL_DISP_FRAME_BUFF_T *sg_p_display_fb = NULL;
 static uint16_t        sg_screen_width = 0;
 static uint16_t        sg_screen_height = 0;
+
+// --- VOICE STATE ---
+static volatile BOOL_T sg_is_speaking = FALSE;
+static volatile BOOL_T sg_voice_changed = FALSE;
 
 // --- DISPLAY INITIALIZATION ---
 static int init_display(void)
@@ -85,7 +92,7 @@ static int init_display(void)
 // --- WIFI CALLBACK ---
 static int link_status_cb(void *data)
 {
-    netmgr_status_e status = (netmgr_status_e)data;
+    netmgr_status_e status = (netmgr_status_e)(uintptr_t)data;
     if (status == NETMGR_LINK_UP) {
         PR_NOTICE(">>> SUCCESS: Network Link UP! <<<");
     } else {
@@ -94,11 +101,22 @@ static int link_status_cb(void *data)
     return 0;
 }
 
+// --- VOICE STATUS CALLBACK ---
+static void voice_status_callback(voice_status_t status)
+{
+    sg_is_speaking = (status == VOICE_STATUS_SPEAKING) ? TRUE : FALSE;
+    sg_voice_changed = TRUE;
+    PR_NOTICE(">>> Voice: %s <<<", sg_is_speaking ? "SPEAKING" : "SILENT");
+}
+
 // --- MAIN ---
 void user_main(void)
 {
     tal_log_init(TAL_LOG_LEVEL_DEBUG, 4096, (TAL_LOG_OUTPUT_CB)tkl_log_output);
-    PR_NOTICE("=== VR Avatar App Starting ===");
+    
+    PR_NOTICE("========================================");
+    PR_NOTICE("    VR AVATAR - AUDIO DEBUG MODE");
+    PR_NOTICE("========================================");
 
     // Initialize display
     if (init_display() != 0) {
@@ -112,6 +130,9 @@ void user_main(void)
     // Draw initial emotion
     PR_NOTICE("Drawing initial emotion: %s", emotion_get_name(emotion_get_current()));
     emotion_draw_current(sg_screen_width, sg_screen_height);
+    
+    // Flush initial display
+    tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
 
     // Initialize system & network
     tal_kv_init(&(tal_kv_cfg_t){.seed = "vmlkasdh93dlvlcy", .key = "dflfuap134ddlduq"});
@@ -127,13 +148,42 @@ void user_main(void)
     PR_NOTICE("Connecting to: %s", WIFI_SSID);
     netmgr_conn_set(NETCONN_WIFI, NETCONN_CMD_SSID_PSWD, &wifi_info);
 
-    // Demo loop - cycle through all emotions
+    // Initialize audio capture
+    PR_NOTICE("--- Initializing Audio ---");
+    if (audio_capture_init() == 0) {
+        audio_capture_start(voice_status_callback);
+        PR_NOTICE("Audio capture started - listening for voice!");
+    } else {
+        PR_WARN("Audio init failed - continuing without voice detection");
+    }
+
+    // Main loop - only redraw when emotion changes
+    BOOL_T was_speaking = FALSE;
+    
+    PR_NOTICE("=== Main loop started ===");
+    
     while (1) {
-        tal_system_sleep(3000);  // Wait 3 seconds
+        // Handle voice status changes - only redraw when status changes
+        if (sg_voice_changed) {
+            sg_voice_changed = FALSE;
+            
+            if (sg_is_speaking && !was_speaking) {
+                // Started speaking - show HAPPY
+                emotion_set_current(EMOTION_HAPPY);
+                emotion_draw_current(sg_screen_width, sg_screen_height);
+                tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
+                PR_NOTICE("Speaking: Showing HAPPY emotion");
+            } else if (!sg_is_speaking && was_speaking) {
+                // Stopped speaking - return to NEUTRAL
+                emotion_set_current(EMOTION_NEUTRAL);
+                emotion_draw_current(sg_screen_width, sg_screen_height);
+                tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
+                PR_NOTICE("Silent: Showing NEUTRAL emotion");
+            }
+            was_speaking = sg_is_speaking;
+        }
         
-        emotion_type_t new_emotion = emotion_next();
-        PR_NOTICE("Emotion changed to: %s", emotion_get_name(new_emotion));
-        emotion_draw_current(sg_screen_width, sg_screen_height);
+        tal_system_sleep(100);  // 100ms polling, no constant redraw
     }
 }
 
