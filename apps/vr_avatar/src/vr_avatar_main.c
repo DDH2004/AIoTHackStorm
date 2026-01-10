@@ -14,8 +14,8 @@
 #include "board_com_api.h"
 
 // --- CONFIGURATION ---
-#define WIFI_SSID     "NETGEAR26"
-#define WIFI_PASSWORD "fluffyteapot856"
+#define WIFI_SSID     "JJ Lake"
+#define WIFI_PASSWORD "20220315"
 
 // Fallback if not defined in board_com_api.h
 #ifndef DISPLAY_NAME
