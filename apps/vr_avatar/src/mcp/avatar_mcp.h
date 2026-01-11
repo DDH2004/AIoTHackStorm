@@ -12,8 +12,9 @@ typedef enum {
 } GW_WIFI_STAT_E;
 
 typedef struct {
-    float x; // Normalized 0.0 - 1.0
-    float y; // Normalized 0.0 - 1.0
+    float x;          // Normalized 0.0 - 1.0
+    float y;          // Normalized 0.0 - 1.0
+    float mouth_open; // 0.0 (Closed) - 1.0 (Open)
 } face_position_t;
 
 /**

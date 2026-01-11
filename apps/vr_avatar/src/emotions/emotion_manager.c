@@ -22,7 +22,8 @@ extern TDL_DISP_DEV_INFO_T    sg_display_info;
 extern TDL_DISP_FRAME_BUFF_T *sg_p_display_fb;
 
 // --- MODULE STATE ---
-static emotion_type_t sg_current_emotion = EMOTION_NEUTRAL;
+static emotion_type_t sg_current_emotion   = EMOTION_NEUTRAL;
+static float          sg_mouth_open_factor = 0.0f;
 
 // --- EMOTION PARAMS ---
 static const char                  *sg_emotion_names[]  = {"NEUTRAL", "HAPPY", "SAD", "ANGRY", "CONFUSED", "SURPRISED"};
@@ -130,7 +131,20 @@ static void __draw_face_impl(int16_t cx, int16_t cy, int16_t face_radius, const 
 
     // 5. Draw Mouth
     int16_t mouth_y = cy + face_radius / 3 + params->mouth_offset_y;
-    draw_mouth(cx, mouth_y, mouth_width, params->mouth_height, params->mouth_curve, params->mouth_color);
+    int16_t mouth_h = params->mouth_height;
+
+    // Override mouth height if we have tracking input (and it's significant)
+    // Or simpler: Always add tracking to base?
+    // Let's make tracking drive it. If factor is small, use base (for static expression).
+    // If factor is large, use factor.
+    if (sg_mouth_open_factor > 0.05f) {
+        // Map 0.0 - 1.0 to 2 - 40 pixels
+        mouth_h = (int16_t)(sg_mouth_open_factor * 40.0f);
+        if (mouth_h < 3)
+            mouth_h = 3;
+    }
+
+    draw_mouth(cx, mouth_y, mouth_width, mouth_h, params->mouth_curve, params->mouth_color);
 }
 
 // ==========================================
@@ -150,8 +164,14 @@ emotion_type_t emotion_get_current(void)
 }
 void emotion_set_current(emotion_type_t emotion)
 {
-    if (emotion < EMOTION_COUNT)
+    if (emotion < EMOTION_COUNT) {
         sg_current_emotion = emotion;
+    }
+}
+
+void emotion_set_mouth_open(float openness)
+{
+    sg_mouth_open_factor = openness;
 }
 emotion_type_t emotion_next(void)
 {

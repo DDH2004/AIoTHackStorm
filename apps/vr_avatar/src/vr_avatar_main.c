@@ -94,7 +94,7 @@ static void http_update_thread(void *arg)
         if (wf_stat >= 4) {
             update_emotion_from_server();
         }
-        tal_system_sleep(1000); // Poll every 1 second
+        tal_system_sleep(50); // Poll every 50ms (20 Hz)
     }
 }
 
@@ -159,6 +159,9 @@ void user_main(void)
             // Get tracking position (0.0 - 1.0)
             face_position_t pos = avatar_get_position();
 
+            // Set mouth openness
+            emotion_set_mouth_open(pos.mouth_open);
+
             // Map to screen coordinates
             // Screen is 320x480 (Portrait) or 480x320 (Landscape)
             // Assuming 320x480 based on previous code
@@ -185,7 +188,7 @@ void user_main(void)
             // Swap buffers
             sg_p_display_fb = (sg_p_display_fb == sg_p_display_fb_1) ? sg_p_display_fb_2 : sg_p_display_fb_1;
         }
-        tal_system_sleep(50); // 20 FPS for smoother tracking
+        tal_system_sleep(16); // ~60 FPS for smoother tracking
     }
 }
 

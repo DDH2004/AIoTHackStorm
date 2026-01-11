@@ -56,6 +56,12 @@ emotion_type_t emotion_get_current(void);
 void emotion_set_current(emotion_type_t emotion); // <--- THIS WAS MISSING
 
 /**
+ * @brief Set the mouth openness factor
+ * @param openness 0.0 (Closed) to 1.0 (Fully Open)
+ */
+void emotion_set_mouth_open(float openness);
+
+/**
  * @brief Cycle to the next emotion (for testing)
  */
 emotion_type_t emotion_next(void);

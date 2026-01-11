@@ -6,7 +6,7 @@
 #include "netmgr.h"
 #include "cJSON.h"
 
-static face_position_t sg_face_pos = {0.5f, 0.5f}; // Default center
+static face_position_t sg_face_pos = {0.5f, 0.5f, 0.0f}; // Default center, closed mouth
 
 face_position_t avatar_get_position(void)
 {
@@ -76,10 +76,15 @@ void update_emotion_from_server(void)
                 cJSON *emotion_item = cJSON_GetObjectItem(root, "emotion");
                 cJSON *x_item       = cJSON_GetObjectItem(root, "x");
                 cJSON *y_item       = cJSON_GetObjectItem(root, "y");
+                cJSON *mouth_item   = cJSON_GetObjectItem(root, "mouth_open");
 
                 if (x_item && y_item) {
                     sg_face_pos.x = (float)x_item->valuedouble;
                     sg_face_pos.y = (float)y_item->valuedouble;
+                }
+
+                if (mouth_item) {
+                    sg_face_pos.mouth_open = (float)mouth_item->valuedouble;
                 }
 
                 if (emotion_item && emotion_item->valuestring) {
