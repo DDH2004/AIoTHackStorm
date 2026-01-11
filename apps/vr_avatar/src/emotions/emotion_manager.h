@@ -67,6 +67,11 @@ emotion_type_t emotion_next(void);
 emotion_type_t emotion_get_current(void);
 
 /**
+ * @brief Set the current emotion
+ */
+void emotion_set_current(emotion_type_t type);
+
+/**
  * @brief Get the string name of an emotion (e.g., "HAPPY")
  */
 const char *emotion_get_name(emotion_type_t type);

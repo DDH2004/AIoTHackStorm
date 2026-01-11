@@ -1,6 +1,6 @@
 /**
  * @file vr_avatar_main.c
- * @brief VR Avatar Project - Camera Viewfinder (Double Buffered)
+ * @brief VR Avatar Project - Camera + Face Emotion Detection
  */
 
 #include "tal_api.h"
@@ -18,6 +18,7 @@
 // --- APP INCLUDES ---
 #include "emotion_manager.h"
 #include "camera_manager.h"
+#include "face_emotion.h"
 
 // --- CONFIGURATION ---
 #define WIFI_SSID     "JJ Lake"
@@ -47,6 +48,26 @@ static SEM_HANDLE             sg_dma_sem = NULL;
 static volatile bool sg_show_camera   = false;
 static uint16_t      sg_screen_width  = 0;
 static uint16_t      sg_screen_height = 0;
+
+// Face Emotion State
+static volatile detected_emotion_t sg_detected_emotion = DETECTED_EMOTION_UNKNOWN;
+static volatile BOOL_T sg_emotion_changed = FALSE;
+static volatile BOOL_T sg_network_ready = FALSE;
+
+// --- MAP DETECTED EMOTION TO AVATAR EMOTION ---
+static emotion_type_t map_detected_to_avatar(detected_emotion_t detected)
+{
+    switch (detected) {
+        case DETECTED_EMOTION_HAPPY:     return EMOTION_HAPPY;
+        case DETECTED_EMOTION_SAD:       return EMOTION_SAD;
+        case DETECTED_EMOTION_ANGRY:     return EMOTION_ANGRY;
+        case DETECTED_EMOTION_SURPRISED: return EMOTION_CONFUSED;  // Map to confused
+        case DETECTED_EMOTION_NEUTRAL:   return EMOTION_NEUTRAL;
+        case DETECTED_EMOTION_FEARFUL:   return EMOTION_SAD;
+        case DETECTED_EMOTION_DISGUSTED: return EMOTION_ANGRY;
+        default:                         return EMOTION_NEUTRAL;
+    }
+}
 
 // --- DMA2D SETUP ---
 static void __dma2d_irq_cb(TUYA_DMA2D_IRQ_E type, VOID_T *args)
@@ -151,11 +172,64 @@ static int init_display(void)
     return 0;
 }
 
+// --- WIFI STATUS CALLBACK ---
+static int wifi_status_callback(void *data)
+{
+    netmgr_status_e status = (netmgr_status_e)(uintptr_t)data;
+    
+    switch (status) {
+        case NETMGR_LINK_UP:
+            PR_NOTICE(">>> WiFi CONNECTED <<<");
+            sg_network_ready = TRUE;
+            // Start face emotion detection now that we have network
+            face_emotion_start();
+            break;
+            
+        case NETMGR_LINK_DOWN:
+            PR_NOTICE(">>> WiFi DISCONNECTED <<<");
+            sg_network_ready = FALSE;
+            face_emotion_stop();
+            break;
+            
+        default:
+            PR_DEBUG("WiFi status: %d", status);
+            break;
+    }
+    
+    return 0;
+}
+
+// --- FACE EMOTION CALLBACK ---
+static void face_emotion_callback(const face_emotion_result_t *result)
+{
+    if (result == NULL) return;
+    
+    PR_NOTICE("Emotion detected: %s (confidence: %d%%, face: %d,%d %dx%d)",
+              face_emotion_get_name(result->emotion),
+              result->confidence,
+              result->face_x, result->face_y,
+              result->face_width, result->face_height);
+    
+    sg_detected_emotion = result->emotion;
+    sg_emotion_changed = TRUE;
+}
+
+// --- UPDATE AVATAR DISPLAY ---
+static void update_avatar_display(emotion_type_t emotion)
+{
+    emotion_set_current(emotion);
+    emotion_draw_current(sg_screen_width, sg_screen_height);
+    tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
+}
+
 // --- MAIN ---
 void user_main(void)
 {
     tal_log_init(TAL_LOG_LEVEL_DEBUG, 4096, (TAL_LOG_OUTPUT_CB)tkl_log_output);
-    PR_NOTICE("%s", "=== VR Avatar App Starting ===");
+    
+    PR_NOTICE("========================================");
+    PR_NOTICE("    VR AVATAR - EMOTION MIRROR");
+    PR_NOTICE("========================================");
 
     if (init_display() != 0) {
         PR_ERR("Display Init Failed");
@@ -168,39 +242,56 @@ void user_main(void)
         PR_ERR("Camera Init Failed");
     }
 
-    // Connect WiFi
+    // Show initial neutral face
+    PR_NOTICE("Showing initial neutral face...");
+    update_avatar_display(EMOTION_NEUTRAL);
+
+    // Initialize system services
     tal_kv_init(&(tal_kv_cfg_t){.seed = "vmlkasdh93dlvlcy", .key = "dflfuap134ddlduq"});
     tal_sw_timer_init();
     tal_workq_init();
+
+    // Initialize network with callback
     netmgr_init(NETCONN_WIFI);
+    tal_event_subscribe(EVENT_LINK_STATUS_CHG, "wifi_cb", 
+                        wifi_status_callback, SUBSCRIBE_TYPE_NORMAL);
+
     netconn_wifi_info_t wifi_info = {0};
     strcpy(wifi_info.ssid, WIFI_SSID);
     strcpy(wifi_info.pswd, WIFI_PASSWORD);
+    PR_NOTICE("Connecting to WiFi: %s", WIFI_SSID);
     netmgr_conn_set(NETCONN_WIFI, NETCONN_CMD_SSID_PSWD, &wifi_info);
 
-    // SHOW CAMERA
-    PR_NOTICE(">>> CAMERA STARTING: Look at the screen! <<<");
-    sg_show_camera = true;
-
-    for (int i = 0; i < 20; i++) {
-        PR_NOTICE("Camera Viewfinder: %d/20 seconds...", i + 1);
-        tal_system_sleep(1000);
+    // Initialize face emotion detection (will start after WiFi connects)
+    if (face_emotion_init(face_emotion_callback) != 0) {
+        PR_ERR("Face emotion init failed!");
     }
 
-    PR_NOTICE(">>> Camera Done. Switching to Avatar. <<<");
-    sg_show_camera = false;
+    PR_NOTICE("========================================");
+    PR_NOTICE("  Waiting for WiFi + emotion server...");
+    PR_NOTICE("========================================");
 
-    // CLEAR SCREEN MANUALLY
-    if (sg_p_display_fb != NULL) {
-        memset(sg_p_display_fb->frame, 0x00, sg_p_display_fb->len);
-        tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
-    }
-
+    // Main loop - respond to emotion changes
+    emotion_type_t current_avatar_emotion = EMOTION_NEUTRAL;
+    
     while (1) {
-        emotion_type_t new_emotion = emotion_next();
-        PR_NOTICE("Emotion: %s", emotion_get_name(new_emotion));
-        emotion_draw_current(sg_screen_width, sg_screen_height);
-        tal_system_sleep(3000);
+        // Check for emotion changes from face detection
+        if (sg_emotion_changed) {
+            sg_emotion_changed = FALSE;
+            
+            emotion_type_t new_emotion = map_detected_to_avatar(sg_detected_emotion);
+            
+            if (new_emotion != current_avatar_emotion) {
+                PR_NOTICE("Avatar: %s -> %s",
+                          emotion_get_name(current_avatar_emotion),
+                          emotion_get_name(new_emotion));
+                
+                current_avatar_emotion = new_emotion;
+                update_avatar_display(current_avatar_emotion);
+            }
+        }
+        
+        tal_system_sleep(50);
     }
 }
 

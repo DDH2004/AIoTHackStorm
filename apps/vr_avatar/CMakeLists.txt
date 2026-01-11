@@ -8,6 +8,7 @@ set(APP_PATH ${CMAKE_CURRENT_LIST_DIR})
 aux_source_directory(${APP_PATH}/src APP_SRCS)
 aux_source_directory(${APP_PATH}/src/emotions EMOTION_SRCS)
 aux_source_directory(${APP_PATH}/src/camera CAMERA_SRCS)
+aux_source_directory(${APP_PATH}/src/network NETWORK_SRCS)
 
 # --- DRIVER SOURCES ---
 # Add Display Driver Sources (TDL)
@@ -23,8 +24,7 @@ add_library(tuyaapp STATIC
     ${APP_SRCS}
     ${EMOTION_SRCS}
     ${CAMERA_SRCS}
-    # Link the driver sources directly if not in a library
-    # (If these cause "duplicate symbol" errors, remove them, but they are often needed)
+    ${NETWORK_SRCS}
 )
 
 # 4. Set Include Directories
@@ -33,10 +33,13 @@ target_include_directories(tuyaapp
     ${APP_PATH}/src
     ${APP_PATH}/src/emotions
     ${APP_PATH}/src/camera
+    ${APP_PATH}/src/network
     # Display Includes
     ${CMAKE_SOURCE_DIR}/src/peripherals/display/tdl_display/include
-    # Camera Includes - CRITICAL FIX
+    # Camera Includes
     ${CMAKE_SOURCE_DIR}/src/peripherals/media/tdl_camera/include
+    # HTTP Client
+    ${CMAKE_SOURCE_DIR}/src/libhttp/include
     # Board Includes
     ${CMAKE_SOURCE_DIR}/include/components/board
 )
