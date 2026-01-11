@@ -1,70 +1,79 @@
-/**
- * @file avatar_mcp.c
- * @brief MCP Tool Registration for Remote Avatar Control
- */
-
-#include "avatar_mcp.h"
 #include "tal_api.h"
-#include "wukong_ai_mcp_server.h" // Standard MCP Library
 #include "emotion_manager.h"
+#include "avatar_mcp.h"
 #include <string.h>
+#include "http_client_interface.h"
+#include "netmgr.h"
 
-// --- TOOL CALLBACK ---
-static OPERATE_RET __set_emotion_cb(const MCP_PROPERTY_LIST_T *properties, MCP_RETURN_VALUE_T *ret_val, void *user_data)
+GW_WIFI_STAT_E get_wf_status(void)
 {
-    char *emotion_str = "neutral";
+    netmgr_status_e status = NETMGR_LINK_DOWN;
+    netmgr_conn_get(NETCONN_WIFI, NETCONN_CMD_STATUS, &status);
 
-    for (int i = 0; i < properties->count; i++) {
-        MCP_PROPERTY_T *prop = properties->properties[i];
-        if (strcmp(prop->name, "emotion") == 0 && prop->type == MCP_PROPERTY_TYPE_STRING) {
+    if (status == NETMGR_LINK_UP || status == NETMGR_LINK_UP_SWITH) {
+        return STAT_IP_GOT;
+    }
 
-            // FIX: Use 'default_val' (based on your app_mcp.c example)
-            emotion_str = prop->default_val.str_val;
+    return STAT_WIFI_UNCONNECTED;
+}
 
-            break;
+// Configuration for your specific server
+#define SERVER_HOST "192.168.34.34"
+#define SERVER_PORT 5001
+#define SERVER_PATH "/listener/emotion"
+
+// Buffer to hold the raw response (Headers + Body)
+static uint8_t s_http_buffer[1024];
+
+void update_emotion_from_server(void)
+{
+    // PR_NOTICE("Checking WiFi status...");
+    if (get_wf_status() < 4) {
+        // PR_NOTICE("WiFi not ready");
+        return;
+    }
+
+    http_client_request_t  request  = {0};
+    http_client_response_t response = {0};
+
+    request.host       = SERVER_HOST;
+    request.port       = SERVER_PORT;
+    request.path       = SERVER_PATH;
+    request.method     = "GET";
+    request.timeout_ms = 1500;
+
+    memset(s_http_buffer, 0, sizeof(s_http_buffer));
+    response.buffer        = s_http_buffer;
+    response.buffer_length = sizeof(s_http_buffer);
+
+    PR_NOTICE("Sending HTTP GET to %s:%d%s", SERVER_HOST, SERVER_PORT, SERVER_PATH);
+    http_client_status_t status = http_client_request(&request, &response);
+    PR_NOTICE("HTTP status: %d, Code: %d", status, response.status_code);
+
+    if (status == HTTP_CLIENT_SUCCESS && response.status_code == 200) {
+        if (response.body != NULL && response.body_length > 0) {
+            // Ensure null termination just in case
+            if (response.body_length < sizeof(s_http_buffer)) {
+                s_http_buffer[response.body_length] = '\0';
+            } else {
+                s_http_buffer[sizeof(s_http_buffer) - 1] = '\0';
+            }
+
+            char *body_str = (char *)response.body;
+            PR_NOTICE("Body: %s", body_str);
+
+            if (strstr(body_str, "happy"))
+                emotion_set_current(EMOTION_HAPPY);
+            else if (strstr(body_str, "sad"))
+                emotion_set_current(EMOTION_SAD);
+            else if (strstr(body_str, "angry"))
+                emotion_set_current(EMOTION_ANGRY);
+            else if (strstr(body_str, "confused"))
+                emotion_set_current(EMOTION_CONFUSED);
+            else if (strstr(body_str, "neutral"))
+                emotion_set_current(EMOTION_NEUTRAL);
         }
     }
 
-    PR_NOTICE(">>> MCP COMMAND: Set Emotion to '%s' <<<", emotion_str);
-
-    // 2. Map String -> Enum
-    emotion_type_t target = EMOTION_NEUTRAL;
-    if (strcmp(emotion_str, "happy") == 0)
-        target = EMOTION_HAPPY;
-    else if (strcmp(emotion_str, "sad") == 0)
-        target = EMOTION_SAD;
-    else if (strcmp(emotion_str, "angry") == 0)
-        target = EMOTION_ANGRY;
-    else if (strcmp(emotion_str, "confused") == 0)
-        target = EMOTION_CONFUSED;
-
-    // 3. Update the Avatar Immediately
-    emotion_set_current(target);
-
-    // 4. Return "True" to the AI Agent
-    wukong_mcp_return_value_set_bool(ret_val, TRUE);
-    return OPRT_OK;
-}
-
-// --- INIT MCP SERVER ---
-static OPERATE_RET __avatar_mcp_start(void *data)
-{
-    // Initialize the MCP Server
-    wukong_mcp_server_init("VR Avatar Host", "1.0");
-
-    // Add the "set_emotion" tool
-    WUKONG_MCP_TOOL_ADD("device.avatar.set_emotion",
-                        "Sets the avatar facial expression. Use this to react to user voice or events.",
-                        __set_emotion_cb, NULL,
-                        MCP_PROP_STR("emotion", "Target emotion: 'happy', 'sad', 'angry', 'confused', 'neutral'"));
-
-    PR_NOTICE("Avatar MCP Tool Registered!");
-    return OPRT_OK;
-}
-
-// Public Init
-OPERATE_RET avatar_mcp_init(void)
-{
-    // Wait for MQTT to connect before registering tools
-    return tal_event_subscribe(EVENT_MQTT_CONNECTED, "avatar_mcp_start", __avatar_mcp_start, SUBSCRIBE_TYPE_ONETIME);
+    http_client_free(&response);
 }

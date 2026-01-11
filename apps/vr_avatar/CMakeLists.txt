@@ -32,6 +32,8 @@ target_include_directories(tuyaapp
     ${CMAKE_SOURCE_DIR}/src/peripherals/display/tdl_display/include
     ${CMAKE_SOURCE_DIR}/src/peripherals/media/tdl_camera/include
     ${CMAKE_SOURCE_DIR}/include/components/board
+    ${CMAKE_SOURCE_DIR}/src/libhttp/include
+    ${CMAKE_SOURCE_DIR}/src/libhttp/coreHTTP/source/include
 )
 
 # 4. Link Dependencies
@@ -44,6 +46,5 @@ target_link_libraries(tuyaapp
     tdl_display
     tdl_media
     tkl_media
-    wukong_mcp   # <--- Link MCP Library
-    
+    # Removed wukong_mcp to avoid conflicts with your custom client
 )

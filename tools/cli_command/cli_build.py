@@ -130,7 +130,7 @@ def prepare_platform(platform, chip=""):
         return True
 
     if os.path.exists(prepare_py):
-        parpare_cmd = "python platform_prepare.py"
+        parpare_cmd = f"{sys.executable} platform_prepare.py"
     else:
         parpare_cmd = "./platform_prepare.sh"
 
@@ -161,7 +161,7 @@ def build_setup(platform, project_name, framework, chip=""):
         return True
 
     if os.path.exists(setup_py):
-        setup_cmd = "python build_setup.py"
+        setup_cmd = f"{sys.executable} build_setup.py"
     else:
         setup_cmd = "./build_setup.sh"
 

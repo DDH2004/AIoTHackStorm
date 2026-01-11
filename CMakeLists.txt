@@ -198,7 +198,7 @@ include("${TOP_SOURCE_DIR}/tools/kconfiglib/gen_build_param.cmake")
 ########################################
 set(BUILD_COMMAND "./build_example.sh")
 if(EXISTS "${TOP_SOURCE_DIR}/platform/${TOS_PROJECT_PLATFORM}/build_example.py")
-    set(BUILD_COMMAND python -u ./build_example.py)
+    set(BUILD_COMMAND python3 -u ./build_example.py)
 endif()
 
 add_custom_target(example
