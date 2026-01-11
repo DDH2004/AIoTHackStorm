@@ -23,9 +23,8 @@ add_library(tuyaapp STATIC
     ${APP_SRCS}
     ${EMOTION_SRCS}
     ${CAMERA_SRCS}
-    ${AI_SRCS}       # <--- NEW: compile AI files
-    # Note: Driver sources are usually linked via libraries below, 
-    # but if needed you can add ${TDL_DISP_SRCS} etc here.
+    ${AI_SRCS}       
+    ${AI_LIB_SRCS}
 )
 
 # 4. Set Include Directories
@@ -35,6 +34,9 @@ target_include_directories(tuyaapp
     ${APP_PATH}/src/emotions
     ${APP_PATH}/src/camera
     ${APP_PATH}/src/ai   
+
+    # ADD THIS: Include path for the real AI header
+    ${CMAKE_SOURCE_DIR}/src/peripherals/tdl_face_attri/include
     
     # Display Includes
     ${CMAKE_SOURCE_DIR}/src/peripherals/display/tdl_display/include
@@ -56,4 +58,5 @@ target_link_libraries(tuyaapp
     tdl_display
     tdl_media
     tkl_media
+    tdl_face_attri
 )
