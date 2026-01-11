@@ -1,6 +1,6 @@
 /**
  * @file vr_avatar_main.c
- * @brief VR Avatar Project - Camera Viewfinder (Double Buffered)
+ * @brief VR Avatar Project - Final Integration
  */
 
 #include "tal_api.h"
@@ -8,16 +8,15 @@
 #include "netmgr.h"
 #include "netconn_wifi.h"
 
-// --- DISPLAY & GRAPHICS INCLUDES ---
 #include "tdl_display_manage.h"
 #include "tdl_display_draw.h"
 #include "board_com_api.h"
 #include "tkl_dma2d.h"
 #include <string.h>
 
-// --- APP INCLUDES ---
 #include "emotion_manager.h"
 #include "camera_manager.h"
+#include "ai_manager.h"
 
 // --- CONFIGURATION ---
 #define WIFI_SSID     "JJ Lake"
@@ -31,19 +30,19 @@
 TDL_DISP_HANDLE_T   sg_tdl_disp_hdl = NULL;
 TDL_DISP_DEV_INFO_T sg_display_info;
 
-// Double Buffering (Ping-Pong)
+// CRITICAL FIX: 'volatile' ensures the main loop sees updates from the camera thread!
+static volatile ai_face_result_t sg_face_result = {0};
+
+// Double Buffering
 TDL_DISP_FRAME_BUFF_T *sg_p_display_fb_1 = NULL;
 TDL_DISP_FRAME_BUFF_T *sg_p_display_fb_2 = NULL;
-
-// FIX: Renamed back to 'sg_p_display_fb' so emotion_manager.c can find it!
-TDL_DISP_FRAME_BUFF_T *sg_p_display_fb = NULL;
+TDL_DISP_FRAME_BUFF_T *sg_p_display_fb   = NULL; // The active buffer
 
 // DMA2D Globals
 static TKL_DMA2D_FRAME_INFO_T sg_dma_in  = {0};
 static TKL_DMA2D_FRAME_INFO_T sg_dma_out = {0};
 static SEM_HANDLE             sg_dma_sem = NULL;
 
-// State Flags
 static volatile bool sg_show_camera   = false;
 static uint16_t      sg_screen_width  = 0;
 static uint16_t      sg_screen_height = 0;
@@ -60,7 +59,6 @@ static int init_dma2d(void)
     OPERATE_RET ret = tal_semaphore_create_init(&sg_dma_sem, 0, 1);
     if (ret != OPRT_OK)
         return ret;
-
     TUYA_DMA2D_BASE_CFG_T dma_cfg = {.cb = __dma2d_irq_cb, .arg = NULL};
     return tkl_dma2d_init(&dma_cfg);
 }
@@ -68,39 +66,34 @@ static int init_dma2d(void)
 // --- CAMERA CALLBACK ---
 OPERATE_RET camera_to_screen_cb(TDL_CAMERA_HANDLE_T hdl, TDL_CAMERA_FRAME_T *frame)
 {
-    if (!sg_show_camera)
-        return OPRT_OK;
-    if (sg_p_display_fb == NULL)
-        return OPRT_COM_ERROR;
+    // 1. Run AI (Updates the volatile global variable)
+    // We cast away volatile locally just to pass it to the function
+    ai_process_frame(frame, (ai_face_result_t *)&sg_face_result);
 
-    // 1. Setup Input (Camera YUV422)
-    sg_dma_in.type   = TUYA_FRAME_FMT_YUV422;
-    sg_dma_in.width  = frame->width;
-    sg_dma_in.height = frame->height;
-    sg_dma_in.pbuf   = frame->data;
+    // 2. If Phase 1 (Viewfinder), Draw Camera to Screen
+    if (sg_show_camera && sg_p_display_fb != NULL) {
+        sg_dma_in.type   = TUYA_FRAME_FMT_YUV422;
+        sg_dma_in.width  = frame->width;
+        sg_dma_in.height = frame->height;
+        sg_dma_in.pbuf   = frame->data;
 
-    // 2. Setup Output (Active Framebuffer RGB565)
-    // We draw to whichever buffer sg_p_display_fb is currently pointing to
-    sg_dma_out.type   = TUYA_FRAME_FMT_RGB565;
-    sg_dma_out.width  = sg_p_display_fb->width;
-    sg_dma_out.height = sg_p_display_fb->height;
-    sg_dma_out.pbuf   = sg_p_display_fb->frame;
+        sg_dma_out.type   = TUYA_FRAME_FMT_RGB565;
+        sg_dma_out.width  = sg_p_display_fb->width;
+        sg_dma_out.height = sg_p_display_fb->height;
+        sg_dma_out.pbuf   = sg_p_display_fb->frame;
 
-    // 3. Run Hardware Conversion
-    tkl_dma2d_convert(&sg_dma_in, &sg_dma_out);
-    tal_semaphore_wait(sg_dma_sem, 100);
+        tkl_dma2d_convert(&sg_dma_in, &sg_dma_out);
+        tal_semaphore_wait(sg_dma_sem, 100);
 
-    // 4. Swap Bytes (Endianness Fix)
-    if (sg_display_info.is_swap) {
-        tdl_disp_dev_rgb565_swap((uint16_t *)sg_p_display_fb->frame, sg_p_display_fb->len / 2);
+        if (sg_display_info.is_swap) {
+            tdl_disp_dev_rgb565_swap((uint16_t *)sg_p_display_fb->frame, sg_p_display_fb->len / 2);
+        }
+
+        tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
+
+        // Swap Buffers for next frame (Ping-Pong)
+        sg_p_display_fb = (sg_p_display_fb == sg_p_display_fb_1) ? sg_p_display_fb_2 : sg_p_display_fb_1;
     }
-
-    // 5. Blast to Screen
-    tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
-
-    // 6. Swap Buffers (Ping-Pong)
-    // Toggle the pointer between fb_1 and fb_2
-    sg_p_display_fb = (sg_p_display_fb == sg_p_display_fb_1) ? sg_p_display_fb_2 : sg_p_display_fb_1;
 
     return OPRT_OK;
 }
@@ -109,7 +102,7 @@ OPERATE_RET camera_to_screen_cb(TDL_CAMERA_HANDLE_T hdl, TDL_CAMERA_FRAME_T *fra
 static int init_display(void)
 {
     OPERATE_RET rt = OPRT_OK;
-    PR_NOTICE("--- Initializing Display (Double Buffered) ---");
+    PR_NOTICE("--- Initializing Display ---");
 
     board_register_hardware();
 
@@ -129,24 +122,21 @@ static int init_display(void)
     sg_screen_height = sg_display_info.height;
     tdl_disp_set_brightness(sg_tdl_disp_hdl, 100);
 
-    // Create TWO Frame Buffers
+    // Create 2 Buffers
     uint32_t frame_len = CAM_WIDTH * CAM_HEIGHT * 2;
-
-    sg_p_display_fb_1 = tdl_disp_create_frame_buff(DISP_FB_TP_PSRAM, frame_len);
+    sg_p_display_fb_1  = tdl_disp_create_frame_buff(DISP_FB_TP_PSRAM, frame_len);
     if (sg_p_display_fb_1) {
         sg_p_display_fb_1->fmt    = sg_display_info.fmt;
         sg_p_display_fb_1->width  = CAM_WIDTH;
         sg_p_display_fb_1->height = CAM_HEIGHT;
     }
-
     sg_p_display_fb_2 = tdl_disp_create_frame_buff(DISP_FB_TP_PSRAM, frame_len);
     if (sg_p_display_fb_2) {
         sg_p_display_fb_2->fmt    = sg_display_info.fmt;
         sg_p_display_fb_2->width  = CAM_WIDTH;
         sg_p_display_fb_2->height = CAM_HEIGHT;
     }
-
-    sg_p_display_fb = sg_p_display_fb_1; // Initialize the global pointer
+    sg_p_display_fb = sg_p_display_fb_1;
 
     return 0;
 }
@@ -158,14 +148,15 @@ void user_main(void)
     PR_NOTICE("%s", "=== VR Avatar App Starting ===");
 
     if (init_display() != 0) {
-        PR_ERR("Display Init Failed");
+        PR_ERR("Display Fail");
         return;
     }
     init_dma2d();
     emotion_manager_init();
+    ai_init();
 
     if (camera_init(camera_to_screen_cb) != 0) {
-        PR_ERR("Camera Init Failed");
+        PR_ERR("Camera Fail");
     }
 
     // Connect WiFi
@@ -178,32 +169,62 @@ void user_main(void)
     strcpy(wifi_info.pswd, WIFI_PASSWORD);
     netmgr_conn_set(NETCONN_WIFI, NETCONN_CMD_SSID_PSWD, &wifi_info);
 
-    // SHOW CAMERA
-    PR_NOTICE(">>> CAMERA STARTING: Look at the screen! <<<");
+    // PHASE 1: CAMERA (10s)
+    PR_NOTICE(">>> PHASE 1: VIEWFINDER <<<");
     sg_show_camera = true;
-
-    for (int i = 0; i < 20; i++) {
-        PR_NOTICE("Camera Viewfinder: %d/20 seconds...", i + 1);
+    for (int i = 0; i < 10; i++) {
+        PR_NOTICE("Viewfinder: %d/10 - X:%d Y:%d", i + 1, sg_face_result.x, sg_face_result.y);
         tal_system_sleep(1000);
     }
 
-    PR_NOTICE(">>> Camera Done. Switching to Avatar. <<<");
+    PR_NOTICE(">>> PHASE 2: AVATAR MODE STARTING <<<");
     sg_show_camera = false;
 
-    // CLEAR SCREEN MANUALLY
-    if (sg_p_display_fb != NULL) {
-        memset(sg_p_display_fb->frame, 0x00, sg_p_display_fb->len);
-        tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
-    }
-
+    // PHASE 2: AVATAR LOOP
     while (1) {
-        emotion_type_t new_emotion = emotion_next();
-        PR_NOTICE("Emotion: %s", emotion_get_name(new_emotion));
-        emotion_draw_current(sg_screen_width, sg_screen_height);
-        tal_system_sleep(3000);
+        // 1. Calculate Draw Position
+        // Screen center + AI offset
+        int draw_x = (sg_screen_width / 2) + sg_face_result.x;
+        int draw_y = (sg_screen_height / 2) + sg_face_result.y;
+
+        // Clamp to edges
+        if (draw_x < 60)
+            draw_x = 60;
+        if (draw_x > sg_screen_width - 60)
+            draw_x = sg_screen_width - 60;
+        if (draw_y < 60)
+            draw_y = 60;
+        if (draw_y > sg_screen_height - 60)
+            draw_y = sg_screen_height - 60;
+
+        // 2. Update Emotion
+        if (sg_face_result.emotion_id != 0) {
+            emotion_set_current((emotion_type_t)sg_face_result.emotion_id);
+        }
+
+        // 3. DRAW & FLUSH (With Double Buffering!)
+        if (sg_p_display_fb != NULL) {
+            // A. Clear current buffer
+            memset(sg_p_display_fb->frame, 0x00, sg_p_display_fb->len);
+
+            // B. Draw Face
+            emotion_draw_at(draw_x, draw_y);
+
+            // C. Log (Helpful for debugging!)
+            PR_NOTICE("Avatar: X%d Y%d E%d", draw_x, draw_y, sg_face_result.emotion_id);
+
+            // D. Flush
+            tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
+
+            // E. Swap Buffers (Fixes flickering)
+            sg_p_display_fb = (sg_p_display_fb == sg_p_display_fb_1) ? sg_p_display_fb_2 : sg_p_display_fb_1;
+        }
+
+        tal_system_sleep(50); // 20 FPS
     }
 }
 
+// ... (Linux/Thread wrappers remain the same) ...
 #if OPERATING_SYSTEM == SYSTEM_LINUX
 void main(int argc, char *argv[])
 {

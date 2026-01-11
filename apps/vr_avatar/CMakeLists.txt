@@ -8,12 +8,12 @@ set(APP_PATH ${CMAKE_CURRENT_LIST_DIR})
 aux_source_directory(${APP_PATH}/src APP_SRCS)
 aux_source_directory(${APP_PATH}/src/emotions EMOTION_SRCS)
 aux_source_directory(${APP_PATH}/src/camera CAMERA_SRCS)
+aux_source_directory(${APP_PATH}/src/ai AI_SRCS)  # <--- NEW: Add AI Sources
 
-# --- DRIVER SOURCES ---
-# Add Display Driver Sources (TDL)
+# --- DRIVER SOURCES (TDL) ---
 aux_source_directory(${CMAKE_SOURCE_DIR}/src/peripherals/display/tdl_display/src TDL_DISP_SRCS)
-# Add Camera Driver Sources (TDL) - CRITICAL FIX
 aux_source_directory(${CMAKE_SOURCE_DIR}/src/peripherals/media/tdl_camera/src TDL_CAM_SRCS)
+aux_source_directory(${CMAKE_SOURCE_DIR}/src/peripherals/ai/tdl_face_attri/src AI_LIB_SRCS)
 
 
 ########################################
@@ -23,8 +23,9 @@ add_library(tuyaapp STATIC
     ${APP_SRCS}
     ${EMOTION_SRCS}
     ${CAMERA_SRCS}
-    # Link the driver sources directly if not in a library
-    # (If these cause "duplicate symbol" errors, remove them, but they are often needed)
+    ${AI_SRCS}       # <--- NEW: compile AI files
+    # Note: Driver sources are usually linked via libraries below, 
+    # but if needed you can add ${TDL_DISP_SRCS} etc here.
 )
 
 # 4. Set Include Directories
@@ -33,9 +34,11 @@ target_include_directories(tuyaapp
     ${APP_PATH}/src
     ${APP_PATH}/src/emotions
     ${APP_PATH}/src/camera
+    ${APP_PATH}/src/ai   
+    
     # Display Includes
     ${CMAKE_SOURCE_DIR}/src/peripherals/display/tdl_display/include
-    # Camera Includes - CRITICAL FIX
+    # Camera Includes
     ${CMAKE_SOURCE_DIR}/src/peripherals/media/tdl_camera/include
     # Board Includes
     ${CMAKE_SOURCE_DIR}/include/components/board
@@ -51,6 +54,6 @@ target_link_libraries(tuyaapp
     # Libraries
     board_init
     tdl_display
-    tdl_media    # Often contains the TDL Camera logic
+    tdl_media
     tkl_media
 )
