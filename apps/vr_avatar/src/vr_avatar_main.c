@@ -156,20 +156,36 @@ void user_main(void)
             // Clear background (Black)
             memset(sg_p_display_fb->frame, 0x00, sg_p_display_fb->len);
 
-            // Draw current emotion at center
-            emotion_draw_current(sg_screen_width, sg_screen_height);
+            // Get tracking position (0.0 - 1.0)
+            face_position_t pos = avatar_get_position();
 
-            // Flush is done inside emotion_draw_current now?
-            // Let's check emotion_manager.c. Yes, it calls tdl_disp_dev_flush.
-            // But we need to swap buffers if we are double buffering.
+            // Map to screen coordinates
+            // Screen is 320x480 (Portrait) or 480x320 (Landscape)
+            // Assuming 320x480 based on previous code
+            int draw_x = (int)(pos.x * sg_screen_width);
+            int draw_y = (int)(pos.y * sg_screen_height);
 
-            // Actually, emotion_draw_current in emotion_manager.c uses sg_p_display_fb
-            // and calls flush. But it doesn't swap sg_p_display_fb pointer.
-            // We should handle that here if we want double buffering.
+            // Clamp to keep face somewhat on screen
+            // Face radius is 100, so keep center within bounds
+            if (draw_x < 50)
+                draw_x = 50;
+            if (draw_x > sg_screen_width - 50)
+                draw_x = sg_screen_width - 50;
+            if (draw_y < 50)
+                draw_y = 50;
+            if (draw_y > sg_screen_height - 50)
+                draw_y = sg_screen_height - 50;
 
+            // Draw current emotion at tracked position
+            emotion_draw_at(draw_x, draw_y);
+
+            // Flush display
+            tdl_disp_dev_flush(sg_tdl_disp_hdl, sg_p_display_fb);
+
+            // Swap buffers
             sg_p_display_fb = (sg_p_display_fb == sg_p_display_fb_1) ? sg_p_display_fb_2 : sg_p_display_fb_1;
         }
-        tal_system_sleep(100); // 10 FPS is enough for static emojis
+        tal_system_sleep(50); // 20 FPS for smoother tracking
     }
 }
 

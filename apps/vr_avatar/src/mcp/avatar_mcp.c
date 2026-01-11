@@ -4,6 +4,14 @@
 #include <string.h>
 #include "http_client_interface.h"
 #include "netmgr.h"
+#include "cJSON.h"
+
+static face_position_t sg_face_pos = {0.5f, 0.5f}; // Default center
+
+face_position_t avatar_get_position(void)
+{
+    return sg_face_pos;
+}
 
 GW_WIFI_STAT_E get_wf_status(void)
 {
@@ -62,20 +70,35 @@ void update_emotion_from_server(void)
             char *body_str = (char *)response.body;
             PR_NOTICE("Body: %s", body_str);
 
-            if (strstr(body_str, "happy"))
-                emotion_set_current(EMOTION_HAPPY);
-            else if (strstr(body_str, "sad"))
-                emotion_set_current(EMOTION_SAD);
-            else if (strstr(body_str, "angry"))
-                emotion_set_current(EMOTION_ANGRY);
-            else if (strstr(body_str, "confused"))
-                emotion_set_current(EMOTION_CONFUSED);
-            else if (strstr(body_str, "neutral"))
-                emotion_set_current(EMOTION_NEUTRAL);
-            else if (strstr(body_str, "fear"))
-                emotion_set_current(EMOTION_SURPRISED);
-            else if (strstr(body_str, "surprise"))
-                emotion_set_current(EMOTION_SURPRISED);
+            // Parse JSON
+            cJSON *root = cJSON_Parse(body_str);
+            if (root) {
+                cJSON *emotion_item = cJSON_GetObjectItem(root, "emotion");
+                cJSON *x_item       = cJSON_GetObjectItem(root, "x");
+                cJSON *y_item       = cJSON_GetObjectItem(root, "y");
+
+                if (x_item && y_item) {
+                    sg_face_pos.x = (float)x_item->valuedouble;
+                    sg_face_pos.y = (float)y_item->valuedouble;
+                }
+
+                if (emotion_item && emotion_item->valuestring) {
+                    char *emo_str = emotion_item->valuestring;
+                    if (strstr(emo_str, "happy"))
+                        emotion_set_current(EMOTION_HAPPY);
+                    else if (strstr(emo_str, "sad"))
+                        emotion_set_current(EMOTION_SAD);
+                    else if (strstr(emo_str, "angry"))
+                        emotion_set_current(EMOTION_ANGRY);
+                    else if (strstr(emo_str, "confused"))
+                        emotion_set_current(EMOTION_CONFUSED);
+                    else if (strstr(emo_str, "neutral"))
+                        emotion_set_current(EMOTION_NEUTRAL);
+                    else if (strstr(emo_str, "fear") || strstr(emo_str, "surprise"))
+                        emotion_set_current(EMOTION_SURPRISED);
+                }
+                cJSON_Delete(root);
+            }
         }
     }
 

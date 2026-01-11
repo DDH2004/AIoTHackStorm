@@ -34,6 +34,7 @@ target_include_directories(tuyaapp
     ${CMAKE_SOURCE_DIR}/include/components/board
     ${CMAKE_SOURCE_DIR}/src/libhttp/include
     ${CMAKE_SOURCE_DIR}/src/libhttp/coreHTTP/source/include
+    ${CMAKE_SOURCE_DIR}/src/libcjson/cJSON
 )
 
 # 4. Link Dependencies
