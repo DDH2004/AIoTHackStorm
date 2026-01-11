@@ -39,7 +39,30 @@
   <a href="./README_zh.md"><img alt="简体中文版自述文件" src="https://img.shields.io/badge/简体中文-d9d9d9"></a>
 </p>
 
+## 🏆 AIoT HackStorm 2026 - VR Avatar Project
 
+> **Hackathon Submission**: Real-time emotion-tracking avatar system built on TuyaOpen SDK
+
+### 📍 Our Project: [VR Avatar](apps/vr_avatar/)
+
+We built a **real-time emotion-tracking avatar** that displays expressive face animations on a Tuya T5AI embedded device. The system uses computer vision for face detection and emotion recognition on a host PC, streaming the detected emotions and face position to the embedded display via HTTP.
+
+**Key Features:**
+- 🎭 **6 Expressive Emotions**: Happy, Sad, Angry, Confused, Surprised, and Neutral
+- 👁️ **Face Position Tracking**: Avatar follows your face movement in real-time
+- 🔄 **Smooth 20 FPS Animation**: Double-buffered rendering for fluid display
+- 🌐 **WiFi Communication**: HTTP-based sync between Python server and embedded device
+
+**➡️ [View Full Project Documentation](apps/vr_avatar/README.md)**
+
+**Code Changes Location:**
+- [`apps/vr_avatar/`](apps/vr_avatar/) - Main application code
+  - [`src/vr_avatar_main.c`](apps/vr_avatar/src/vr_avatar_main.c) - Application entry point
+  - [`src/emotions/`](apps/vr_avatar/src/emotions/) - Emotion rendering engine
+  - [`src/mcp/`](apps/vr_avatar/src/mcp/) - HTTP client & emotion sync
+  - [`server/emotion_server.py`](apps/vr_avatar/server/emotion_server.py) - Python emotion detection server
+
+---
 ## Overview
 
 TuyaOpen powers next-gen AI-agent hardware: it supports gear (Tuya T-Series WIFI/BT MCUs, Pi, ESP32s) via its flexible, cross-platform C/C++ SDK, pairs with Tuya Cloud’s low-latency multimodal AI (drag-and-drop workflows), integrates top models (ChatGPT, Gemini, Qwen, Doubao etc.), and streamlines open AI-IoT ecosystem building.
