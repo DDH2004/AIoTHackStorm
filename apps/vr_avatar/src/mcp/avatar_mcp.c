@@ -72,6 +72,10 @@ void update_emotion_from_server(void)
                 emotion_set_current(EMOTION_CONFUSED);
             else if (strstr(body_str, "neutral"))
                 emotion_set_current(EMOTION_NEUTRAL);
+            else if (strstr(body_str, "fear"))
+                emotion_set_current(EMOTION_SURPRISED);
+            else if (strstr(body_str, "surprise"))
+                emotion_set_current(EMOTION_SURPRISED);
         }
     }
 

@@ -6,7 +6,7 @@
 // Confused: One eyebrow up, one down, crooked mouth
 static const emotion_face_params_t EMOTION_PARAMS_CONFUSED = {
     .bg_color      = 0x0000, // Black Background
-    .face_color    = 0x07E0, // Green Face (RGB565)
+    .face_color    = 0xFFE0, // Yellow
     .eye_color     = 0x0000, // Black Eyes
     .eyebrow_color = 0x0000, // Black Eyebrows
     .mouth_color   = 0x0000, // Black Mouth

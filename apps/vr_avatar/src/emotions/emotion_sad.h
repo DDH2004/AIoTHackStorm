@@ -6,10 +6,10 @@
 // Sad: Blue face, drooping eyebrows, frown
 static const emotion_face_params_t EMOTION_PARAMS_SAD = {
     .bg_color      = 0x0000,
-    .face_color    = 0x001F, // Blue
-    .eye_color     = 0xFFFF, // White eyes (teary?)
-    .eyebrow_color = 0xFFFF,
-    .mouth_color   = 0xFFFF,
+    .face_color    = 0xFFE0, // Yellow
+    .eye_color     = 0x0000, // Black
+    .eyebrow_color = 0x0000, // Black
+    .mouth_color   = 0x0000, // Black
 
     .eye_offset_y = 10, // Eyes lower
     .eye_squint   = 2,
@@ -21,7 +21,7 @@ static const emotion_face_params_t EMOTION_PARAMS_SAD = {
     .mouth_offset_y = 40,
     .mouth_width    = 40,
     .mouth_height   = 5,
-    .mouth_curve    = -15 // Big frown
+    .mouth_curve    = 15 // Big frown (Positive = Frown)
 };
 
 #endif

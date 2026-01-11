@@ -14,6 +14,7 @@
 #include "emotion_sad.h"
 #include "emotion_angry.h"
 #include "emotion_confused.h"
+#include "emotion_surprised.h"
 
 // --- EXTERNAL REFERENCES ---
 extern TDL_DISP_HANDLE_T      sg_tdl_disp_hdl;
@@ -24,10 +25,10 @@ extern TDL_DISP_FRAME_BUFF_T *sg_p_display_fb;
 static emotion_type_t sg_current_emotion = EMOTION_NEUTRAL;
 
 // --- EMOTION PARAMS ---
-static const char                  *sg_emotion_names[]  = {"NEUTRAL", "HAPPY", "SAD", "ANGRY", "CONFUSED"};
-static const emotion_face_params_t *sg_emotion_params[] = {&EMOTION_PARAMS_NEUTRAL, &EMOTION_PARAMS_HAPPY,
-                                                           &EMOTION_PARAMS_SAD, &EMOTION_PARAMS_ANGRY,
-                                                           &EMOTION_PARAMS_CONFUSED};
+static const char                  *sg_emotion_names[]  = {"NEUTRAL", "HAPPY", "SAD", "ANGRY", "CONFUSED", "SURPRISED"};
+static const emotion_face_params_t *sg_emotion_params[] = {&EMOTION_PARAMS_NEUTRAL,  &EMOTION_PARAMS_HAPPY,
+                                                           &EMOTION_PARAMS_SAD,      &EMOTION_PARAMS_ANGRY,
+                                                           &EMOTION_PARAMS_CONFUSED, &EMOTION_PARAMS_SURPRISED};
 
 // ==========================================
 // DRAWING HELPERS (Pixels)

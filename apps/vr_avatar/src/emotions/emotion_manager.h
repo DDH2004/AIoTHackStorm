@@ -15,6 +15,7 @@ typedef enum {
     EMOTION_SAD,
     EMOTION_ANGRY,
     EMOTION_CONFUSED,
+    EMOTION_SURPRISED,
     EMOTION_COUNT // Total number of emotions
 } emotion_type_t;
 
